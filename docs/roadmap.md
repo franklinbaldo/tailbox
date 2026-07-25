@@ -6,10 +6,12 @@
 - [x] Initialize Tailscale's userspace WireGuard engine.
 - [x] Reach Tailscale's `NeedsLogin` state.
 - [x] Isolate the current failure with guest DNS and direct-IP HTTP tests.
-- [ ] Implement a Windows-userland network bridge in LiteBox.
-- [ ] Configure host-visible SOCKS5 and HTTP proxy listeners.
-- [ ] Complete browser login with unrestricted outbound networking.
+- [x] Implement an experimental Windows-userland network bridge in LiteBox.
+- [x] Configure a host-visible SOCKS5 proxy listener.
+- [x] Complete browser login with unrestricted outbound networking.
+- [x] Carry a host HTTPS request through the SOCKS5 proxy.
 - [ ] Reach a tailnet HTTP service from a host browser.
+- [ ] Fix Go GC stack unwinding and remove `GOGC=off`.
 
 ## Phase 1: repeatable developer build
 

@@ -1,0 +1,326 @@
+diff --git a/litebox/src/net/mod.rs b/litebox/src/net/mod.rs
+index de31c04e..7f6f1efb 100644
+--- a/litebox/src/net/mod.rs
++++ b/litebox/src/net/mod.rs
+@@ -1175,7 +1175,13 @@ where
+                 }
+                 socket_handle.tcp_mut().server_socket = Some(TcpServerSpecific {
+                     ip_listen_endpoint: smoltcp::wire::IpListenEndpoint {
+-                        addr: Some(smoltcp::wire::IpAddress::Ipv4(*addr.ip())),
++                        addr: Some(smoltcp::wire::IpAddress::Ipv4(
++                            if addr.ip().is_unspecified() || addr.ip().is_loopback() {
++                                INTERFACE_IP_ADDR
++                            } else {
++                                *addr.ip()
++                            },
++                        )),
+                         port: new_port,
+                     },
+                     backlog: None,
+@@ -1188,7 +1194,11 @@ where
+                     .allocate_local_port(addr.port())
+                     .map_err(|_| BindError::PortAlreadyInUse(addr.port()))?;
+                 let local_endpoint = smoltcp::wire::IpListenEndpoint {
+-                    addr: Some(smoltcp::wire::IpAddress::Ipv4(*addr.ip())),
++                    addr: Some(smoltcp::wire::IpAddress::Ipv4(if addr.ip().is_unspecified() {
++                        INTERFACE_IP_ADDR
++                    } else {
++                        *addr.ip()
++                    })),
+                     port: lp.port(),
+                 };
+                 let socket: &mut udp::Socket = self.socket_set.get_mut(socket_handle.handle);
+@@ -1434,7 +1444,10 @@ where
+                         .map_err(SendError::PortAllocationFailure)?;
+                     let port = local_port.port();
+                     let Ok(()) =
+-                        udp_socket.bind(smoltcp::wire::IpListenEndpoint { addr: None, port })
++                        udp_socket.bind(smoltcp::wire::IpListenEndpoint {
++                            addr: Some(smoltcp::wire::IpAddress::Ipv4(INTERFACE_IP_ADDR)),
++                            port,
++                        })
+                     else {
+                         self.local_port_allocator.deallocate(local_port);
+                         unreachable!("binding to a free port cannot fail")
+diff --git a/litebox_platform_windows_userland/Cargo.toml b/litebox_platform_windows_userland/Cargo.toml
+index ed637f9a..825122ff 100644
+--- a/litebox_platform_windows_userland/Cargo.toml
++++ b/litebox_platform_windows_userland/Cargo.toml
+@@ -5,8 +5,10 @@ edition = "2024"
+ 
+ [target.'cfg(windows)'.dependencies]
+ getrandom = "0.3.4"
++libwgslirpy = { git = "https://github.com/vi/wgslirpy", rev = "6805933f3e6f88f3cd8d1106a135d7d53eb198ea", package = "libwgslirpy" }
+ litebox = { path = "../litebox/", version = "0.1.0" }
+ litebox_common_linux = { path = "../litebox_common_linux", version = "0.1.0" }
++tokio = { version = "1.29.1", features = ["rt-multi-thread", "sync"] }
+ 
+ windows-sys = { version = "0.60.2", features = [
+     "Win32_System_Console",
+diff --git a/litebox_platform_windows_userland/src/lib.rs b/litebox_platform_windows_userland/src/lib.rs
+index 2cc27402..cf76b4d2 100644
+--- a/litebox_platform_windows_userland/src/lib.rs
++++ b/litebox_platform_windows_userland/src/lib.rs
+@@ -12,10 +12,12 @@ use core::panic;
+ use core::sync::atomic::{AtomicU32, Ordering};
+ use core::time::Duration;
+ use std::cell::RefCell;
++use std::net::SocketAddr;
+ use std::os::raw::c_void;
+ use std::os::windows::io::AsRawHandle as _;
+ use std::sync::{Arc, Mutex, OnceLock};
+ 
++use libwgslirpy::bytes::BytesMut;
+ use litebox::platform::ImmediatelyWokenUp;
+ use litebox::platform::UnblockedOrTimedOut;
+ use litebox::platform::page_mgmt::{
+@@ -54,6 +56,8 @@ thread_local! {
+ pub struct WindowsUserland {
+     reserved_pages: alloc::vec::Vec<core::ops::Range<usize>>,
+     sys_info: std::sync::RwLock<Win32_SysInfo::SYSTEM_INFO>,
++    outbound_packets: tokio::sync::mpsc::Sender<BytesMut>,
++    inbound_packets: Mutex<tokio::sync::mpsc::Receiver<BytesMut>>,
+ }
+ 
+ impl core::fmt::Debug for WindowsUserland {
+@@ -218,6 +222,13 @@ impl WindowsUserland {
+     ///
+     /// Panics if the TLS slot cannot be created.
+     pub fn new() -> &'static Self {
++        Self::new_with_tcp_forwards(Vec::new())
++    }
++
++    /// Create a Windows-userland platform with userspace NAT and TCP forwards.
++    pub fn new_with_tcp_forwards(
++        tcp_forwards: Vec<(SocketAddr, SocketAddr)>,
++    ) -> &'static Self {
+         let mut sys_info = Win32_SysInfo::SYSTEM_INFO::default();
+         Self::get_system_information(&mut sys_info);
+ 
+@@ -240,9 +251,46 @@ impl WindowsUserland {
+ 
+         let reserved_pages = Self::read_memory_maps();
+ 
++        let (outbound_packets, router_input) = tokio::sync::mpsc::channel(1024);
++        let (router_output, inbound_packets) = tokio::sync::mpsc::channel(1024);
++        std::thread::Builder::new()
++            .name("litebox-usernet".into())
++            .spawn(move || {
++                let runtime = tokio::runtime::Builder::new_multi_thread()
++                    .enable_all()
++                    .build()
++                    .expect("failed to create LiteBox userspace-network runtime");
++                let incoming_tcp = tcp_forwards
++                    .into_iter()
++                    .map(|(host, dst)| libwgslirpy::router::PortForward {
++                        host,
++                        src: None,
++                        dst,
++                    })
++                    .collect();
++                let options = libwgslirpy::router::Opts {
++                    dns_addr: Some("1.1.1.1:53".parse().unwrap()),
++                    pingable: None,
++                    mtu: 1500,
++                    tcp_buffer_size: 256 * 1024,
++                    incoming_udp: Vec::new(),
++                    incoming_tcp,
++                };
++                runtime
++                    .block_on(libwgslirpy::router::run(
++                        router_input,
++                        router_output,
++                        options,
++                    ))
++                    .expect("LiteBox userspace network router failed");
++            })
++            .expect("failed to start LiteBox userspace-network thread");
++
+         let platform = Self {
+             reserved_pages,
+             sys_info: std::sync::RwLock::new(sys_info),
++            outbound_packets,
++            inbound_packets: Mutex::new(inbound_packets),
+         };
+ 
+         // Initialize it's own fs-base (for the main thread)
+@@ -1377,21 +1425,103 @@ impl litebox::platform::RawMutex for RawMutex {
+ 
+ impl litebox::platform::IPInterfaceProvider for WindowsUserland {
+     fn send_ip_packet(&self, packet: &[u8]) -> Result<(), litebox::platform::SendError> {
+-        unimplemented!(
+-            "send_ip_packet is not implemented for Windows yet. packet length: {}",
+-            packet.len()
+-        );
++        let mut packet = BytesMut::from(packet);
++        normalize_ipv4_source(&mut packet);
++        self.outbound_packets
++            .blocking_send(packet)
++            .expect("LiteBox userspace network router stopped");
++        Ok(())
+     }
+ 
+     fn receive_ip_packet(
+         &self,
+         packet: &mut [u8],
+     ) -> Result<usize, litebox::platform::ReceiveError> {
+-        unimplemented!(
+-            "receive_ip_packet is not implemented for Windows yet. packet length: {}",
+-            packet.len()
+-        );
++        let mut inbound = self.inbound_packets.lock().unwrap();
++        match inbound.try_recv() {
++            Ok(received) => {
++                assert!(
++                    received.len() <= packet.len(),
++                    "received IP packet exceeds LiteBox MTU"
++                );
++                packet[..received.len()].copy_from_slice(&received);
++                Ok(received.len())
++            }
++            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
++                Err(litebox::platform::ReceiveError::WouldBlock)
++            }
++            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
++                panic!("LiteBox userspace network router stopped")
++            }
++        }
++    }
++}
++
++fn normalize_ipv4_source(packet: &mut [u8]) {
++    const GUEST_IP: [u8; 4] = [10, 0, 0, 2];
++    if packet.len() < 20 || packet[0] >> 4 != 4 || packet[12..16] != [0, 0, 0, 0] {
++        return;
++    }
++    let header_len = usize::from(packet[0] & 0x0f) * 4;
++    if header_len < 20 || packet.len() < header_len {
++        return;
++    }
++
++    packet[12..16].copy_from_slice(&GUEST_IP);
++    packet[10..12].fill(0);
++    let header_checksum = internet_checksum(&[&packet[..header_len]]);
++    packet[10..12].copy_from_slice(&header_checksum.to_be_bytes());
++
++    let protocol = packet[9];
++    let destination = [packet[16], packet[17], packet[18], packet[19]];
++    let transport = &mut packet[header_len..];
++    let checksum_offset = match protocol {
++        6 if transport.len() >= 18 => 16,
++        17 if transport.len() >= 8 => 6,
++        _ => return,
++    };
++    transport[checksum_offset..checksum_offset + 2].fill(0);
++    let transport_len = u16::try_from(transport.len()).expect("transport packet too large");
++    let pseudo_header = [
++        GUEST_IP[0],
++        GUEST_IP[1],
++        GUEST_IP[2],
++        GUEST_IP[3],
++        destination[0],
++        destination[1],
++        destination[2],
++        destination[3],
++        0,
++        protocol,
++        (transport_len >> 8) as u8,
++        transport_len as u8,
++    ];
++    let mut checksum = internet_checksum(&[&pseudo_header, transport]);
++    if protocol == 17 && checksum == 0 {
++        checksum = u16::MAX;
++    }
++    transport[checksum_offset..checksum_offset + 2].copy_from_slice(&checksum.to_be_bytes());
++}
++
++fn internet_checksum(parts: &[&[u8]]) -> u16 {
++    let mut sum = 0u32;
++    let mut high_byte = None;
++    for part in parts {
++        for &byte in *part {
++            if let Some(high) = high_byte.take() {
++                sum += u32::from(u16::from_be_bytes([high, byte]));
++            } else {
++                high_byte = Some(byte);
++            }
++        }
++    }
++    if let Some(high) = high_byte {
++        sum += u32::from(u16::from_be_bytes([high, 0]));
++    }
++    while sum >> 16 != 0 {
++        sum = (sum & 0xffff) + (sum >> 16);
+     }
++    !(sum as u16)
+ }
+ 
+ impl litebox::platform::TimeProvider for WindowsUserland {
+diff --git a/litebox_runner_linux_on_windows_userland/src/lib.rs b/litebox_runner_linux_on_windows_userland/src/lib.rs
+index d2353be2..54a3bdb0 100644
+--- a/litebox_runner_linux_on_windows_userland/src/lib.rs
++++ b/litebox_runner_linux_on_windows_userland/src/lib.rs
+@@ -10,7 +10,7 @@ extern crate alloc;
+ use anyhow::{Result, anyhow};
+ use clap::Parser;
+ use litebox_platform_windows_userland::WindowsUserland as Platform;
+-use std::path::PathBuf;
++use std::{net::SocketAddr, path::PathBuf};
+ 
+ /// Run Linux programs with LiteBox on unmodified Windows.
+ ///
+@@ -41,6 +41,9 @@ pub struct CliArgs {
+     /// (e.g., via `litebox-packager`).
+     #[arg(long = "initial-files", value_name = "PATH_TO_TAR", value_hint = clap::ValueHint::FilePath)]
+     pub initial_files: PathBuf,
++    /// Forward a host TCP listener to a guest address (`HOST=GUEST`).
++    #[arg(long = "forward-tcp", value_name = "HOST=GUEST")]
++    pub tcp_forwards: Vec<String>,
+ }
+ 
+ /// Run Linux programs with LiteBox on unmodified Windows
+@@ -68,7 +71,17 @@ pub fn run(cli_args: CliArgs) -> Result<()> {
+     let tar_data = std::fs::read(tar_file)
+         .map_err(|e| anyhow!("Could not read tar file at {}: {}", tar_file.display(), e))?;
+ 
+-    let platform = Platform::new();
++    let tcp_forwards = cli_args
++        .tcp_forwards
++        .iter()
++        .map(|value| {
++            let (host, guest) = value
++                .split_once('=')
++                .ok_or_else(|| anyhow!("invalid --forward-tcp value {value:?}; expected HOST=GUEST"))?;
++            Ok((host.parse::<SocketAddr>()?, guest.parse::<SocketAddr>()?))
++        })
++        .collect::<Result<Vec<_>>>()?;
++    let platform = Platform::new_with_tcp_forwards(tcp_forwards);
+     let shim_builder = litebox_shim_linux::LinuxShimBuilder::new(platform);
+     let litebox = shim_builder.litebox();
+ 
+@@ -92,6 +105,25 @@ pub fn run(cli_args: CliArgs) -> Result<()> {
+     let initial_file_system = std::sync::Arc::new(initial_file_system);
+ 
+     let shim = shim_builder.build();
++    let network_shim = shim.clone();
++    std::thread::Builder::new()
++        .name("litebox-network".into())
++        .spawn(move || loop {
++            let timeout = loop {
++                match network_shim.perform_network_interaction() {
++                    litebox::net::PlatformInteractionReinvocationAdvice::CallAgainImmediately => {}
++                    litebox::net::PlatformInteractionReinvocationAdvice::WaitOnDeviceOrSocketInteraction {
++                        timeout,
++                    } => break timeout,
++                }
++            };
++            const DEFAULT_TIMEOUT: core::time::Duration =
++                core::time::Duration::from_micros(100);
++            const MAX_TIMEOUT: core::time::Duration = core::time::Duration::from_millis(1);
++            std::thread::sleep(timeout.unwrap_or(DEFAULT_TIMEOUT).min(MAX_TIMEOUT));
++        })
++        .expect("failed to start LiteBox network worker");
++
+     let argv = cli_args
+         .program_and_arguments
+         .iter()

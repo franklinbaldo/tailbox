@@ -35,6 +35,8 @@ Write-Host "Press Ctrl+C to stop it."
 & $Runner `
     --env TS_LITEBOX=1 `
     --env TS_LITEBOX_LOGIN=1 `
+    --env GOGC=off `
+    --forward-tcp "127.0.0.1:${ProxyPort}=10.0.0.2:${ProxyPort}" `
     --initial-files $Image `
     /usr/local/bin/tailscaled `
     --tun=userspace-networking `

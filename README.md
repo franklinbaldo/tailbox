@@ -93,23 +93,24 @@ Developers with the existing sibling checkouts and prototype image can run:
 ```
 
 See [the architecture](docs/architecture.md), [security model](docs/security.md),
-and [roadmap](docs/roadmap.md) before using the prototype.
+[live test record](docs/live-test.md), and [roadmap](docs/roadmap.md) before
+using the prototype.
 
 ## Status
 
-TailBox has demonstrated that a patched `tailscaled` can initialize its
-userspace WireGuard engine inside LiteBox. A live Windows test then established
-that LiteBox's current Windows-userland platform does not implement outbound IP
-packet transport, so Tailscale control-plane login and a host-visible proxy
-cannot yet complete.
+TailBox has completed its first live Windows proof: a patched `tailscaled`
+authenticated with the Tailscale control plane, reached `Running`, loaded ten
+tailnet peers, connected to a DERP relay, exposed a host-loopback SOCKS5 proxy,
+and carried an HTTPS request from Windows through that proxy.
 
-The three largest unresolved requirements are:
+The largest unresolved requirements are:
 
-1. Implementing or upstreaming a Windows-userland network bridge for LiteBox.
-2. Persisting Tailscale authentication outside LiteBox's memory-backed
+1. Persisting Tailscale authentication outside LiteBox's memory-backed
    filesystem.
-3. Confirming that a host Playwright browser can reliably use the proxy exposed
-   by the LiteBox guest.
+2. Fixing Go stack unwinding during garbage collection; the short proof used
+   `GOGC=off` and is not suitable for an indefinitely running process.
+3. Testing Playwright MCP and a private tailnet HTTP endpoint through the
+   verified proxy.
 
 ## License
 

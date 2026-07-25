@@ -32,10 +32,14 @@ LiteBox runs the patched Linux `tailscaled` without a full Linux VM. TailBox
 uses Tailscale's userspace-networking mode, not a TUN device. The current guest
 filesystem is memory-backed.
 
-The pinned LiteBox Windows-userland platform currently leaves
+The pinned LiteBox Windows-userland platform leaves
 `IPInterfaceProvider::send_ip_packet` and `receive_ip_packet` unimplemented.
-TailBox therefore needs a host network bridge before guest sockets can exchange
-packets with either the public Tailscale control plane or tailnet peers.
+TailBox patches that boundary with a pinned `libwgslirpy` NAT router. Raw guest
+IP packets are terminated in user space and forwarded through ordinary Windows
+TCP/UDP sockets. No TUN device or privileged route change is involved.
+
+The runner's `--forward-tcp HOST=GUEST` option maps an explicit loopback listener
+on Windows to a guest TCP listener. TailBox uses it to expose port 1055.
 
 ### Playwright integration
 
@@ -69,9 +73,11 @@ On Windows x64, the patched daemon:
 1. starts without administrator privileges;
 2. creates the userspace WireGuard engine;
 3. synthesizes a stable guest interface snapshot without Linux Netlink;
-4. enters `NeedsLogin`;
-5. times out on direct IPv4 and DNS traffic because the Windows-userland packet
-   transport is not implemented.
+4. resolves DNS and establishes outbound TCP/UDP through the user-space NAT;
+5. authenticates with the Tailscale control plane and enters `Running`;
+6. exposes `127.0.0.1:1055` on the Windows host;
+7. carries a host HTTPS request through the SOCKS5 proxy.
 
-This is an application-level failure, not merely a missing DNS configuration:
-BusyBox DNS and direct HTTP-to-IP tests from the same guest also time out.
+The proof disabled Go garbage collection because stack unwinding eventually
+failed inside LiteBox. This keeps the test deterministic but is not an
+acceptable long-running configuration.
