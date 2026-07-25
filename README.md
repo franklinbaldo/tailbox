@@ -16,8 +16,24 @@ explicit, tightly controlled reverse tunnels for human operators.
 
 > [!WARNING]
 > TailBox is an early experiment, not a security boundary or a system-wide VPN.
-> It currently requires a development build and has not yet passed its
-> unprivileged clean-machine acceptance tests.
+> The current prototype disables Go garbage collection due to an unresolved
+> runtime crash, so it is suitable only for short experiments.
+
+## Install and run on Windows
+
+From an unprivileged PowerShell prompt:
+
+```powershell
+irm https://github.com/franklinbaldo/tailbox/releases/latest/download/install.ps1 | iex
+```
+
+The bootstrap downloads the Windows x64 release package, verifies its SHA-256
+checksum, installs it under `%LOCALAPPDATA%\TailBox`, and starts a local
+SOCKS5/HTTP proxy at `127.0.0.1:1055`. Follow the Tailscale authorization URL
+shown in the terminal and leave the process running.
+
+The one-line bootstrap itself is trusted through GitHub HTTPS. The downloaded
+package is not extracted or executed until its published checksum matches.
 
 ## What TailBox aims to provide
 
@@ -63,7 +79,8 @@ tailbox proxy
 tailbox reverse-shell user@my-server --authorized-key id_ed25519.pub
 ```
 
-These commands describe the product direction; they are not implemented yet.
+These commands describe the product direction; only the release bootstrap and
+local proxy are implemented today.
 
 ## Current prototype
 
