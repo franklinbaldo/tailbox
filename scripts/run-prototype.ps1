@@ -32,7 +32,11 @@ Write-Host "Starting experimental TailBox proxy on 127.0.0.1:$ProxyPort"
 Write-Host "This contacts Tailscale and will request browser authorization."
 Write-Host "Press Ctrl+C to stop it."
 
-& $Runner $Image /usr/local/bin/tailscaled `
+& $Runner `
+    --env TS_LITEBOX=1 `
+    --env TS_LITEBOX_LOGIN=1 `
+    --initial-files $Image `
+    /usr/local/bin/tailscaled `
     --tun=userspace-networking `
     --state=/tmp/tailscaled.state `
     --socket=/tmp/tailscaled.sock `

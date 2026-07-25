@@ -109,3 +109,30 @@ index 94554dc..8b35ced 100644
  		return nil, err
  	}
  	ret := make([]Interface, len(ifs))
+diff --git a/net/netmon/netmon.go b/net/netmon/netmon.go
+index d574217..0000000 100644
+--- a/net/netmon/netmon.go
++++ b/net/netmon/netmon.go
+@@ -11,6 +11,7 @@ import (
+ 	"fmt"
+ 	"log"
+ 	"net/netip"
++	"os"
+ 	"runtime"
+ 	"slices"
+ 	"strings"
+@@ -386,6 +387,14 @@ func New(bus *eventbus.Bus, logf logger.Logf) (*Monitor, error) {
+ 	}
+ 	m.ifState = st
+ 
++	if os.Getenv("TS_LITEBOX") == "1" {
++		// LiteBox does not currently expose Linux route netlink. Its virtual
++		// interface is static for the lifetime of this single-process guest,
++		// so retain the initial snapshot and skip the OS change monitor.
++		m.static = true
++		return m, nil
++	}
++
+ 	m.om, err = newOSMon(bus, logf, m)
+ 	if err != nil {
+ 		return nil, err

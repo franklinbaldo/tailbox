@@ -4,7 +4,10 @@
 
 - [x] Start a patched `tailscaled` ELF inside LiteBox.
 - [x] Initialize Tailscale's userspace WireGuard engine.
-- [x] Configure SOCKS5 and HTTP proxy listeners.
+- [x] Reach Tailscale's `NeedsLogin` state.
+- [x] Isolate the current failure with guest DNS and direct-IP HTTP tests.
+- [ ] Implement a Windows-userland network bridge in LiteBox.
+- [ ] Configure host-visible SOCKS5 and HTTP proxy listeners.
 - [ ] Complete browser login with unrestricted outbound networking.
 - [ ] Reach a tailnet HTTP service from a host browser.
 
@@ -30,4 +33,3 @@
 - [ ] Implement `tailbox ssh`.
 - [ ] Design and threat-model opt-in reverse tunnels.
 - [ ] Implement restricted reverse execution before considering a full shell.
-

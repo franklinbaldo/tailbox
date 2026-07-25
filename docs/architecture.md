@@ -32,6 +32,11 @@ LiteBox runs the patched Linux `tailscaled` without a full Linux VM. TailBox
 uses Tailscale's userspace-networking mode, not a TUN device. The current guest
 filesystem is memory-backed.
 
+The pinned LiteBox Windows-userland platform currently leaves
+`IPInterfaceProvider::send_ip_packet` and `receive_ip_packet` unimplemented.
+TailBox therefore needs a host network bridge before guest sockets can exchange
+packets with either the public Tailscale control plane or tailnet peers.
+
 ### Playwright integration
 
 Playwright MCP supports `--proxy-server` and the
@@ -57,3 +62,16 @@ An out-of-box release needs an explicit host persistence bridge for Tailscale
 state. Until that exists, restarting LiteBox requires login again. Auth keys and
 state must never be stored in the repository or command-line arguments.
 
+## Verified prototype behavior
+
+On Windows x64, the patched daemon:
+
+1. starts without administrator privileges;
+2. creates the userspace WireGuard engine;
+3. synthesizes a stable guest interface snapshot without Linux Netlink;
+4. enters `NeedsLogin`;
+5. times out on direct IPv4 and DNS traffic because the Windows-userland packet
+   transport is not implemented.
+
+This is an application-level failure, not merely a missing DNS configuration:
+BusyBox DNS and direct HTTP-to-IP tests from the same guest also time out.

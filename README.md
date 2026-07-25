@@ -98,14 +98,17 @@ and [roadmap](docs/roadmap.md) before using the prototype.
 ## Status
 
 TailBox has demonstrated that a patched `tailscaled` can initialize its
-userspace WireGuard engine inside LiteBox. The next release gate is a complete
-login-and-proxy test from a standard Windows account.
+userspace WireGuard engine inside LiteBox. A live Windows test then established
+that LiteBox's current Windows-userland platform does not implement outbound IP
+packet transport, so Tailscale control-plane login and a host-visible proxy
+cannot yet complete.
 
-The two largest unresolved requirements are:
+The three largest unresolved requirements are:
 
-1. Persisting Tailscale authentication outside LiteBox's memory-backed
+1. Implementing or upstreaming a Windows-userland network bridge for LiteBox.
+2. Persisting Tailscale authentication outside LiteBox's memory-backed
    filesystem.
-2. Confirming that a host Playwright browser can reliably use the proxy exposed
+3. Confirming that a host Playwright browser can reliably use the proxy exposed
    by the LiteBox guest.
 
 ## License
@@ -113,4 +116,3 @@ The two largest unresolved requirements are:
 TailBox's original integration code is licensed under the MIT License. LiteBox
 and Tailscale remain governed by their respective upstream licenses. A release
 process must preserve all required third-party notices.
-
