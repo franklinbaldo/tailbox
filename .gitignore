@@ -25,3 +25,4 @@ Thumbs.db
 
 # Release packages
 dist/
+target/

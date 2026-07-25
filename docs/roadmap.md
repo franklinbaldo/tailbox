@@ -1,37 +1,37 @@
 # Roadmap
 
-## Phase 0: compatibility proof
+## Phase 0: LiteBox compatibility proof
 
-- [x] Start a patched `tailscaled` ELF inside LiteBox.
-- [x] Initialize Tailscale's userspace WireGuard engine.
-- [x] Reach Tailscale's `NeedsLogin` state.
-- [x] Isolate the current failure with guest DNS and direct-IP HTTP tests.
-- [x] Implement an experimental Windows-userland network bridge in LiteBox.
-- [x] Configure a host-visible SOCKS5 proxy listener.
-- [x] Complete browser login with unrestricted outbound networking.
-- [x] Carry a host HTTPS request through the SOCKS5 proxy.
-- [ ] Reach a tailnet HTTP service from a host browser.
-- [ ] Fix Go GC stack unwinding and remove `GOGC=off`.
+- [x] Run a patched Linux `tailscaled` inside LiteBox.
+- [x] Add Windows userspace TCP/UDP transport.
+- [x] Authenticate and reach the Tailscale `Running` state.
+- [x] Carry host HTTPS through SOCKS5 and HTTP proxies.
+- [x] Record the Go unwinding and persistence limitations.
 
-## Phase 1: repeatable developer build
+## Phase 1: native Windows backend
 
-- [ ] Fetch and verify pinned LiteBox and Tailscale sources.
-- [ ] Apply compatibility patches without manual edits.
-- [ ] Build the runner and rewritten Tailscale image.
-- [ ] Add smoke tests and artifact checksums.
-
-## Phase 2: unprivileged Windows product
-
-- [ ] Persist encrypted Tailscale state in the user's profile.
-- [ ] Select dynamic loopback ports and expose readiness.
-- [ ] Provide `tailbox login`, `logout`, `status`, and `proxy`.
+- [x] Verify that upstream `libtailscale` does not currently build on Windows.
+- [x] Build a native `tsnet` engine without administrator privileges.
+- [x] Build a small Rust CLI supervisor.
+- [x] Persist state under `%LOCALAPPDATA%\TailBox`.
+- [x] Add loopback SOCKS5 and HTTP proxy listeners.
+- [x] Reduce the compiled payload to approximately 22.5 MB.
+- [ ] Complete interactive login and private-tailnet traffic tests.
 - [ ] Test on clean Windows 10/11 x64 standard-user accounts.
-- [ ] Produce signed, checksummed releases.
+
+## Phase 2: release
+
+- [x] Add SHA-256-verified `irm ... | iex` installation.
+- [x] Add a Windows GitHub Actions release build.
+- [ ] Add Authenticode signing.
+- [ ] Publish the first GitHub release.
+- [ ] Add `uvx tailbox` as a wrapper around verified release assets.
+- [ ] Evaluate a developer-only Cargo installation workflow.
 
 ## Phase 3: integrations
 
-- [ ] Publish a Playwright MCP wrapper.
+- [ ] Validate Playwright MCP against a private tailnet site.
 - [ ] Implement `tailbox connect` as an OpenSSH `ProxyCommand`.
 - [ ] Implement `tailbox ssh`.
-- [ ] Design and threat-model opt-in reverse tunnels.
-- [ ] Implement restricted reverse execution before considering a full shell.
+- [ ] Threat-model opt-in reverse tunnels.
+- [ ] Implement restricted reverse execution before a full shell.

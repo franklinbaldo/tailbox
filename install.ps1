@@ -47,8 +47,7 @@ try {
 
     Write-Host "Verified and installed TailBox $($manifest.version)."
     Write-Host "Starting the local proxy. Follow the Tailscale login URL, then leave this window open."
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-        (Join-Path $versionPath "tailbox.ps1")
+    & (Join-Path $versionPath "tailbox.exe")
     if ($LASTEXITCODE -ne 0) {
         throw "TailBox stopped with exit code $LASTEXITCODE."
     }

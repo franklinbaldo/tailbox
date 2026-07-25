@@ -1,83 +1,62 @@
 # Architecture
 
-TailBox is a host-side supervisor around a patched Tailscale daemon running as
-a Linux ELF binary inside LiteBox.
+TailBox's default backend is native Windows userspace networking.
 
 ```text
-MCP client
-   │ stdio
-   ▼
-TailBox Playwright wrapper ── starts ──► Playwright MCP
-   │                                      │
-   │ supervises                           │ SOCKS5
-   ▼                                      ▼
-LiteBox runner ── runs ──► tailscaled userspace networking
-                                      │
-                                      ▼
-                                  tailnet
+MCP / browser / OpenSSH
+          |
+  SOCKS5 :1055 or HTTP :1056
+          |
+  tailbox.exe (Rust supervisor)
+          |
+  tailbox-engine.exe (Go + official tsnet)
+          |
+        tailnet
 ```
 
-## Components
+## Rust supervisor
 
-### TailBox supervisor
+`tailbox.exe` owns the stable user-facing command line and starts the engine
+from the same release directory. Keeping this layer small lets future commands
+such as `ssh`, `playwright`, and restricted reverse tunnels share one Windows
+interface without reimplementing the Tailscale protocol.
 
-The planned Windows-native executable owns process lifetime, chooses unused
-loopback ports, starts LiteBox, waits for readiness, and launches integrations.
-It must keep stdout clean when acting as an MCP stdio server; status and login
-messages belong on stderr or in a separate browser flow.
+## Native engine
 
-### LiteBox guest
+`tailbox-engine.exe` embeds the official `tailscale.com/tsnet` package. It
+creates no TUN adapter and changes no Windows routes. It persists node identity
+under `%LOCALAPPDATA%\TailBox\state`, waits for interactive login on first use,
+and dials requested destinations through the tailnet.
 
-LiteBox runs the patched Linux `tailscaled` without a full Linux VM. TailBox
-uses Tailscale's userspace-networking mode, not a TUN device. The current guest
-filesystem is memory-backed.
+The engine serves:
 
-The pinned LiteBox Windows-userland platform leaves
-`IPInterfaceProvider::send_ip_packet` and `receive_ip_packet` unimplemented.
-TailBox patches that boundary with a pinned `libwgslirpy` NAT router. Raw guest
-IP packets are terminated in user space and forwarded through ordinary Windows
-TCP/UDP sockets. No TUN device or privileged route change is involved.
+- an unauthenticated SOCKS5 proxy on `127.0.0.1:1055`;
+- an unauthenticated HTTP/HTTPS CONNECT proxy on `127.0.0.1:1056`.
 
-The runner's `--forward-tcp HOST=GUEST` option maps an explicit loopback listener
-on Windows to a guest TCP listener. TailBox uses it to expose port 1055.
+Both listeners are loopback-only. Remote exposure is not configurable.
 
-### Playwright integration
+## Why two executables
 
-Playwright MCP supports `--proxy-server` and the
-`PLAYWRIGHT_MCP_PROXY_SERVER` environment variable. The wrapper will point it
-at TailBox's loopback SOCKS5 listener and transparently preserve MCP stdio.
+The official `libtailscale` C library currently models connections as POSIX
+file descriptors and uses Unix socket pairs. A direct build on Windows x64
+fails at `sys/socket.h`. TailBox therefore uses `tsnet` directly in a small Go
+engine instead of maintaining a private Windows FFI fork.
 
-### SSH integration
+The Rust `tailscale-rs` implementation is not currently a viable replacement:
+upstream labels it unaudited and insecure, and Windows support is not present.
 
-`tailbox connect HOST PORT` will relay stdin/stdout through SOCKS5. This can be
-used as an OpenSSH `ProxyCommand`. `tailbox ssh` will provide a convenient
-wrapper around the Windows OpenSSH client.
+## LiteBox backend
 
-### Reverse access
+The earlier LiteBox proof remains reviewable in `patches/` and
+`scripts/run-prototype.ps1`. It demonstrated that the Linux `tailscaled` could
+authenticate and proxy traffic through a patched LiteBox network bridge.
 
-Reverse forwarding is a separate opt-in feature. A future embedded,
-unprivileged SSH endpoint may permit an authorized operator on a tailnet server
-to reach the local Windows user session. It must never be enabled by login,
-proxy, Playwright, or outbound SSH commands.
+LiteBox may later return as an optional Linux tool sandbox. Its Windows
+userland isolation is not a documented or independently verified security
+boundary, so TailBox must not represent it as one.
 
-## Persistence
+## Planned integrations
 
-An out-of-box release needs an explicit host persistence bridge for Tailscale
-state. Until that exists, restarting LiteBox requires login again. Auth keys and
-state must never be stored in the repository or command-line arguments.
-
-## Verified prototype behavior
-
-On Windows x64, the patched daemon:
-
-1. starts without administrator privileges;
-2. creates the userspace WireGuard engine;
-3. synthesizes a stable guest interface snapshot without Linux Netlink;
-4. resolves DNS and establishes outbound TCP/UDP through the user-space NAT;
-5. authenticates with the Tailscale control plane and enters `Running`;
-6. exposes `127.0.0.1:1055` on the Windows host;
-7. carries a host HTTPS request through the SOCKS5 proxy.
-
-The proof disabled Go garbage collection because stack unwinding eventually
-failed inside LiteBox. This keeps the test deterministic but is not an
-acceptable long-running configuration.
+- Playwright MCP receives `--proxy-server=socks5://127.0.0.1:1055`.
+- OpenSSH receives a TailBox-backed `ProxyCommand`.
+- Reverse access remains a separate, explicit, off-by-default feature.

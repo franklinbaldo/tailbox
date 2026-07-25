@@ -2,26 +2,25 @@
 param(
     [Parameter(Mandatory)]
     [string]$Version,
-    [string]$Runner,
-    [string]$Image,
+    [string]$TailBox,
+    [string]$Engine,
     [string]$OutputDirectory
 )
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$workspaceRoot = Split-Path -Parent $repositoryRoot
 
-if (-not $Runner) {
-    $Runner = Join-Path $workspaceRoot "litebox\target\x86_64-pc-windows-gnu\release\litebox_runner_linux_on_windows_userland.exe"
+if (-not $TailBox) {
+    $TailBox = Join-Path $repositoryRoot "target\release\tailbox.exe"
 }
-if (-not $Image) {
-    $Image = Join-Path $workspaceRoot "litebox-experiment\tailscale-v1.98.9-experimental-litebox.tar"
+if (-not $Engine) {
+    $Engine = Join-Path $repositoryRoot "target\release\tailbox-engine.exe"
 }
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repositoryRoot "dist"
 }
 
-foreach ($path in @($Runner, $Image)) {
+foreach ($path in @($TailBox, $Engine)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required release input is missing: $path"
     }
@@ -31,15 +30,25 @@ $packagePath = Join-Path $OutputDirectory "package"
 $archivePath = Join-Path $OutputDirectory "tailbox-windows-x64.zip"
 $checksumPath = "$archivePath.sha256"
 
+if (Test-Path -LiteralPath $packagePath) {
+    Remove-Item -LiteralPath $packagePath -Recurse -Force
+}
 New-Item -ItemType Directory -Path $OutputDirectory, $packagePath -Force | Out-Null
-Copy-Item -LiteralPath $Runner -Destination (Join-Path $packagePath "tailbox-runner.exe")
-Copy-Item -LiteralPath $Image -Destination (Join-Path $packagePath "tailscale-litebox.tar")
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot "tailbox.ps1") -Destination $packagePath
+Copy-Item -LiteralPath $TailBox -Destination (Join-Path $packagePath "tailbox.exe")
+Copy-Item -LiteralPath $Engine -Destination (Join-Path $packagePath "tailbox-engine.exe")
+Copy-Item -LiteralPath (Join-Path $repositoryRoot "LICENSE") -Destination (Join-Path $packagePath "LICENSE.txt")
+$goModuleCache = (& go env GOMODCACHE).Trim()
+$tailscaleLicense = Join-Path $goModuleCache "tailscale.com@v1.98.9\LICENSE"
+if (-not (Test-Path -LiteralPath $tailscaleLicense -PathType Leaf)) {
+    throw "Tailscale license not found in the Go module cache: $tailscaleLicense"
+}
+Copy-Item -LiteralPath $tailscaleLicense `
+    -Destination (Join-Path $packagePath "LICENSE-Tailscale-BSD-3-Clause.txt")
 
 @{
     version = $Version
     architecture = "windows-x64"
-    liteboxCommit = "6a03ec80f065d2a66b937bde3d6f0708d282ca27"
+    backend = "tsnet"
     tailscaleVersion = "v1.98.9"
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $packagePath "manifest.json")
 

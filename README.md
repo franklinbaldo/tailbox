@@ -1,25 +1,19 @@
 # TailBox
 
-**Give humans and AI agents access to private tailnet resources from an
-unprivileged Windows account.**
+**Application-scoped tailnet access for humans and AI agents on Windows
+without administrator privileges.**
 
-TailBox is an experimental compatibility layer that runs Tailscale's userspace
-networking inside [Microsoft LiteBox](https://github.com/microsoft/litebox).
-It is intended for Windows computers where the user cannot install a VPN
-driver, Windows service, or virtual network adapter.
-
-The first target integration launches
-[Playwright MCP](https://github.com/microsoft/playwright-mcp) through a local
-TailBox SOCKS5 proxy. This lets an AI agent browse private web applications on
-the user's tailnet. TailBox also aims to provide outbound SSH access and
-explicit, tightly controlled reverse tunnels for human operators.
+TailBox runs an embedded Tailscale node in userspace and exposes local SOCKS5
+and HTTP proxies. It does not install a VPN adapter, Windows service, driver,
+or system-wide route. Only applications explicitly configured for the proxy
+use the tailnet.
 
 > [!WARNING]
-> TailBox is an early experiment, not a security boundary or a system-wide VPN.
-> The current prototype disables Go garbage collection due to an unresolved
-> runtime crash, so it is suitable only for short experiments.
+> TailBox is an early experiment. The native backend has compiled successfully
+> on Windows x64, but it has not yet completed its clean-machine acceptance
+> test or received an independent security review.
 
-## Install and run on Windows
+## Install and run
 
 From an unprivileged PowerShell prompt:
 
@@ -27,110 +21,95 @@ From an unprivileged PowerShell prompt:
 irm https://github.com/franklinbaldo/tailbox/releases/latest/download/install.ps1 | iex
 ```
 
-The bootstrap downloads the Windows x64 release package, verifies its SHA-256
-checksum, installs it under `%LOCALAPPDATA%\TailBox`, and starts a local
-SOCKS5/HTTP proxy at `127.0.0.1:1055`. Follow the Tailscale authorization URL
-shown in the terminal and leave the process running.
+The bootstrap downloads the Windows x64 package, verifies its SHA-256 checksum,
+installs it under `%LOCALAPPDATA%\TailBox`, and starts TailBox. On first use,
+open the Tailscale authorization URL printed in the terminal.
 
-The one-line bootstrap itself is trusted through GitHub HTTPS. The downloaded
-package is not extracted or executed until its published checksum matches.
-
-## What TailBox aims to provide
+TailBox then listens only on Windows loopback:
 
 ```text
-Agent → Playwright MCP ─┐
-Human → SSH client ─────┼→ TailBox proxy → Tailscale → private services
-Other proxy-aware app ──┘
+SOCKS5  socks5://127.0.0.1:1055
+HTTP    http://127.0.0.1:1056
 ```
 
-- Browser access for agents through Playwright MCP.
-- Interactive SSH from Windows to a tailnet machine.
-- A local SOCKS5/HTTP proxy for explicitly configured applications.
-- Optional reverse SSH tunnels, disabled by default.
-- No administrator privileges, kernel driver, Windows service, or full Linux
-  virtual machine.
+The bootstrap itself is trusted through GitHub HTTPS. The downloaded package
+is not extracted or executed until its published checksum matches.
 
-TailBox does **not** place every Windows application on the tailnet. Only
-applications launched through TailBox or configured to use its proxy receive
-tailnet connectivity.
+## Agents and Playwright MCP
 
-## Intended experience
-
-The planned Playwright MCP configuration is:
-
-```json
-{
-  "mcpServers": {
-    "playwright-tailbox": {
-      "command": "npx",
-      "args": ["-y", "@tailbox/playwright"]
-    }
-  }
-}
-```
-
-Planned human-facing commands:
-
-```console
-tailbox login
-tailbox playwright
-tailbox ssh user@my-server
-tailbox proxy
-tailbox reverse-shell user@my-server --authorized-key id_ed25519.pub
-```
-
-These commands describe the product direction; only the release bootstrap and
-local proxy are implemented today.
-
-## Current prototype
-
-The prototype currently:
-
-- Builds a statically linked `tailscaled` based on Tailscale `v1.98.9`.
-- Rewrites its Linux syscall sites for LiteBox.
-- Runs it in userspace-networking mode.
-- Requests interactive Tailscale login from the daemon process.
-- Configures loopback SOCKS5 and HTTP proxy listeners.
-
-The working development checkout uses:
-
-- LiteBox commit `6a03ec80f065d2a66b937bde3d6f0708d282ca27`
-- Tailscale tag `v1.98.9`, commit
-  `6c167d40fa37aeb51afa7ff336730670ea4762bf`
-- Go `1.26.5`
-
-The compatibility changes are stored in [`patches/`](patches/). Generated
-images, SDKs, executables, logs, credentials, and runtime state are deliberately
-excluded from Git.
-
-Developers with the existing sibling checkouts and prototype image can run:
+Start TailBox and leave it running:
 
 ```powershell
-.\scripts\run-prototype.ps1
+tailbox proxy
 ```
 
-See [the architecture](docs/architecture.md), [security model](docs/security.md),
-[live test record](docs/live-test.md), and [roadmap](docs/roadmap.md) before
-using the prototype.
+Then launch a proxy-aware agent tool, for example:
 
-## Status
+```powershell
+npx @playwright/mcp@latest --proxy-server=socks5://127.0.0.1:1055
+```
 
-TailBox has completed its first live Windows proof: a patched `tailscaled`
-authenticated with the Tailscale control plane, reached `Running`, loaded ten
-tailnet peers, connected to a DERP relay, exposed a host-loopback SOCKS5 proxy,
-and carried an HTTPS request from Windows through that proxy.
+Playwright MCP integration remains to be validated against a private tailnet
+site before it is considered supported.
 
-The largest unresolved requirements are:
+## Architecture
 
-1. Persisting Tailscale authentication outside LiteBox's memory-backed
-   filesystem.
-2. Fixing Go stack unwinding during garbage collection; the short proof used
-   `GOGC=off` and is not suitable for an indefinitely running process.
-3. Testing Playwright MCP and a private tailnet HTTP endpoint through the
-   verified proxy.
+```text
+Playwright / browser / SSH client
+              |
+      SOCKS5 or HTTP proxy
+              |
+        tailbox.exe (Rust CLI)
+              |
+    tailbox-engine.exe (Go + tsnet)
+              |
+            tailnet
+```
+
+The small Rust executable owns the user-facing CLI and process lifecycle. The
+Go engine embeds Tailscale's official
+[`tsnet`](https://tailscale.com/docs/features/tsnet) implementation. State and
+node identity persist under `%LOCALAPPDATA%\TailBox\state`.
+
+The release contains two executables because the official `libtailscale` C API
+currently uses POSIX file descriptors and does not compile on Windows. A pure
+Rust Tailscale backend is also not suitable yet: `tailscale-rs` explicitly
+describes itself as unaudited and insecure and does not currently support
+Windows.
+
+## Why LiteBox is no longer the default
+
+The original proof ran a patched Linux `tailscaled` inside Microsoft LiteBox
+and demonstrated real SOCKS5 and HTTP traffic through a tailnet from Windows.
+That experiment remains in [`patches/`](patches/) and
+[`scripts/run-prototype.ps1`](scripts/run-prototype.ps1).
+
+LiteBox remains interesting as a future optional backend for running a
+restricted Linux tool environment alongside Tailscale. It is not needed for
+the primary proxy use case, and removing it from the default path eliminates
+the Linux image, syscall patches, user-mode NAT bridge, non-persistent state,
+and the observed Go stack-unwinding failure.
+
+## Build
+
+The build uses pinned Tailscale `v1.98.9`, Go 1.26, and stable Rust:
+
+```powershell
+.\scripts\build-native.ps1
+.\scripts\package-release.ps1 -Version 0.1.0
+```
+
+Generated executables and release archives are excluded from Git. Official
+upstream source is consumed as a dependency rather than vendored.
+
+`cargo install tailbox` is intentionally unavailable because Cargo alone
+cannot build the required Go engine. A future `uvx tailbox` package can wrap
+the same signed/checksummed GitHub release without compiling locally.
+
+See [architecture](docs/architecture.md), [security](docs/security.md),
+[live test history](docs/live-test.md), and [roadmap](docs/roadmap.md).
 
 ## License
 
-TailBox's original integration code is licensed under the MIT License. LiteBox
-and Tailscale remain governed by their respective upstream licenses. A release
-process must preserve all required third-party notices.
+TailBox's original code is MIT licensed. Tailscale and tsnet are BSD
+3-Clause-licensed and remain governed by their upstream license.

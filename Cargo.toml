@@ -1,0 +1,14 @@
+[package]
+name = "tailbox"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Application-scoped tailnet access for unprivileged Windows users and agents"
+repository = "https://github.com/franklinbaldo/tailbox"
+publish = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

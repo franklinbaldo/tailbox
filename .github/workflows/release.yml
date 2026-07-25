@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: engine/go.sum
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "value=${{ inputs.version }}" >> $env:GITHUB_OUTPUT
+          } else {
+            "value=$('${{ github.ref_name }}'.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Build and test
+        shell: pwsh
+        run: ./scripts/build-native.ps1
+
+      - name: Package
+        shell: pwsh
+        run: ./scripts/package-release.ps1 -Version "${{ steps.version.outputs.value }}"
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.value }}
+          prerelease: false
+          files: |
+            install.ps1
+            dist/tailbox-windows-x64.zip
+            dist/tailbox-windows-x64.zip.sha256
