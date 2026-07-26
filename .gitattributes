@@ -1,0 +1,8 @@
+* text=auto whitespace=-blank-at-eof
+*.go text eol=lf
+*.md text eol=lf
+*.mod text eol=lf
+*.patch text eol=lf whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+*.ps1 text eol=crlf
+*.rs text eol=lf
+*.sum text eol=lf

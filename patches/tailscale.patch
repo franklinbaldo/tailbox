@@ -1,0 +1,138 @@
+diff --git a/atomicfile/atomicfile.go b/atomicfile/atomicfile.go
+index 1fa4c06..8e19472 100644
+--- a/atomicfile/atomicfile.go
++++ b/atomicfile/atomicfile.go
+@@ -19,6 +19,12 @@
+ // exists then the target file's attributes and ACLs are preserved. If the target
+ // filename already exists but is not a regular file, WriteFile returns an error.
+ func WriteFile(filename string, data []byte, perm os.FileMode) (err error) {
++	if os.Getenv("TS_LITEBOX") == "1" {
++		// LiteBox's in-memory filesystem currently lacks chmod, fsync, and
++		// rename. A direct write is sufficient for this single-process
++		// compatibility experiment, but is intentionally not crash-atomic.
++		return os.WriteFile(filename, data, perm)
++	}
+ 	fi, err := os.Stat(filename)
+ 	if err == nil && !fi.Mode().IsRegular() {
+ 		return fmt.Errorf("%s already exists and is not a regular file", filename)
+@@ -37,13 +43,15 @@ func WriteFile(filename string, data []byte, perm os.FileMode) (err error) {
+ 	if _, err := f.Write(data); err != nil {
+ 		return err
+ 	}
+-	if runtime.GOOS != "windows" {
++	if runtime.GOOS != "windows" && os.Getenv("TS_LITEBOX") != "1" {
+ 		if err := f.Chmod(perm); err != nil {
+ 			return err
+ 		}
+ 	}
+-	if err := f.Sync(); err != nil {
+-		return err
++	if os.Getenv("TS_LITEBOX") != "1" {
++		if err := f.Sync(); err != nil {
++			return err
++		}
+ 	}
+ 	if err := f.Close(); err != nil {
+ 		return err
+diff --git a/cmd/tailscaled/tailscaled.go b/cmd/tailscaled/tailscaled.go
+index fe18731..5a8e0c1 100644
+--- a/cmd/tailscaled/tailscaled.go
++++ b/cmd/tailscaled/tailscaled.go
+@@ -570,7 +570,22 @@ func startIPNServer(ctx context.Context, logf logger.Logf, logID logid.PublicID,
+ 		lb, err := getLocalBackend(ctx, logf, logID, sys)
+ 		if err == nil {
+ 			logf("got LocalBackend in %v", time.Since(t0).Round(time.Millisecond))
+-			if lb.Prefs().Valid() {
++			if authKey := os.Getenv("TS_AUTHKEY"); os.Getenv("TS_LITEBOX") == "1" &&
++				(authKey != "" || os.Getenv("TS_LITEBOX_LOGIN") == "1") {
++				prefs := ipn.NewPrefs()
++				prefs.WantRunning = true
++				prefs.CorpDNS = false
++				if err := lb.Start(ipn.Options{AuthKey: authKey, UpdatePrefs: prefs}); err != nil {
++					logf("LiteBox LocalBackend.Start: %v", err)
++					lb.Shutdown()
++					lbErr.Store(err)
++					cancel()
++					return
++				}
++				if err := lb.StartLoginInteractive(ctx); err != nil {
++					logf("LiteBox StartLoginInteractive: %v", err)
++				}
++			} else if lb.Prefs().Valid() {
+ 				if err := lb.Start(ipn.Options{}); err != nil {
+ 					logf("LocalBackend.Start: %v", err)
+ 					lb.Shutdown()
+diff --git a/net/netmon/state.go b/net/netmon/state.go
+index 94554dc..8b35ced 100644
+--- a/net/netmon/state.go
++++ b/net/netmon/state.go
+@@ -9,6 +9,7 @@
+ 	"net"
+ 	"net/http"
+ 	"net/netip"
++	"os"
+ 	"runtime"
+ 	"slices"
+ 	"sort"
+@@ -845,6 +846,34 @@ func netInterfaces() ([]Interface, error) {
+ 	}
+ 	ifs, err := net.Interfaces()
+ 	if err != nil {
++		if os.Getenv("TS_LITEBOX") == "1" {
++			return []Interface{
++				{
++					Interface: &net.Interface{
++						Index: 1,
++						MTU:   65536,
++						Name:  "lo",
++						Flags: net.FlagUp | net.FlagLoopback,
++					},
++					AltAddrs: []net.Addr{&net.IPNet{
++						IP:   net.IPv4(127, 0, 0, 1),
++						Mask: net.CIDRMask(8, 32),
++					}},
++				},
++				{
++					Interface: &net.Interface{
++						Index: 2,
++						MTU:   1500,
++						Name:  "eth0",
++						Flags: net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
++					},
++					AltAddrs: []net.Addr{&net.IPNet{
++						IP:   net.IPv4(10, 0, 0, 2),
++						Mask: net.CIDRMask(24, 32),
++					}},
++				},
++			}, nil
++		}
+ 		return nil, err
+ 	}
+ 	ret := make([]Interface, len(ifs))
+diff --git a/net/netmon/netmon.go b/net/netmon/netmon.go
+index d574217..0000000 100644
+--- a/net/netmon/netmon.go
++++ b/net/netmon/netmon.go
+@@ -11,6 +11,7 @@ import (
+ 	"fmt"
+ 	"log"
+ 	"net/netip"
++	"os"
+ 	"runtime"
+ 	"slices"
+ 	"strings"
+@@ -386,6 +387,14 @@ func New(bus *eventbus.Bus, logf logger.Logf) (*Monitor, error) {
+ 	}
+ 	m.ifState = st
+ 
++	if os.Getenv("TS_LITEBOX") == "1" {
++		// LiteBox does not currently expose Linux route netlink. Its virtual
++		// interface is static for the lifetime of this single-process guest,
++		// so retain the initial snapshot and skip the OS change monitor.
++		m.static = true
++		return m, nil
++	}
++
+ 	m.om, err = newOSMon(bus, logf, m)
+ 	if err != nil {
+ 		return nil, err

@@ -1,0 +1,29 @@
+# Build outputs and downloaded toolchains
+/artifacts/
+/dist/
+/downloads/
+/vendor/
+/.tools/
+*.tar
+*.zip
+*.exe
+
+# Runtime state and secrets
+*.log
+*.pid
+*.state
+.env
+authkey
+
+# Node tooling (planned Playwright MCP wrapper)
+/node_modules/
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Release packages
+dist/
+target/
