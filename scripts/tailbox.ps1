@@ -16,9 +16,9 @@ if (-not (Test-Path -LiteralPath $image -PathType Leaf)) {
     throw "TailBox image is missing: $image"
 }
 
-Write-Host "TailBox proxy: socks5://127.0.0.1:$ProxyPort"
-Write-Host "TailBox HTTP proxy: http://127.0.0.1:$ProxyPort"
-Write-Host "Press Ctrl+C to stop it."
+Write-Output "TailBox proxy: socks5://127.0.0.1:$ProxyPort"
+Write-Output "TailBox HTTP proxy: http://127.0.0.1:$ProxyPort"
+Write-Output "Press Ctrl+C to stop it."
 
 & $runner `
     --env TS_LITEBOX=1 `
@@ -35,3 +35,5 @@ Write-Host "Press Ctrl+C to stop it."
     --no-logs-no-support
 
 exit $LASTEXITCODE
+
+

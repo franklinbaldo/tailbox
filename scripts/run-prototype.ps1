@@ -28,9 +28,9 @@ if (-not (Test-Path -LiteralPath $Image -PathType Leaf)) {
 $env:TS_LITEBOX = "1"
 $env:TS_LITEBOX_LOGIN = "1"
 
-Write-Host "Starting experimental TailBox proxy on 127.0.0.1:$ProxyPort"
-Write-Host "This contacts Tailscale and will request browser authorization."
-Write-Host "Press Ctrl+C to stop it."
+Write-Output "Starting experimental TailBox proxy on 127.0.0.1:$ProxyPort"
+Write-Output "This contacts Tailscale and will request browser authorization."
+Write-Output "Press Ctrl+C to stop it."
 
 & $Runner `
     --env TS_LITEBOX=1 `
@@ -47,4 +47,3 @@ Write-Host "Press Ctrl+C to stop it."
     --no-logs-no-support
 
 exit $LASTEXITCODE
-

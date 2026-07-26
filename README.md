@@ -19,12 +19,17 @@ use the tailnet.
 From an unprivileged PowerShell prompt:
 
 ```powershell
-irm https://github.com/franklinbaldo/tailbox/releases/latest/download/install.ps1 | iex
+irm https://raw.githubusercontent.com/franklinbaldo/tailbox/main/install.ps1 | iex
 ```
 
 The bootstrap downloads the Windows x64 package, verifies its SHA-256 checksum,
 installs it under `%LOCALAPPDATA%\TailBox`, and starts TailBox. On first use,
 open the Tailscale authorization URL printed in the terminal.
+
+During the prerelease phase, the bootstrap resolves the newest published
+GitHub release through the GitHub API because `/releases/latest` excludes
+prereleases. It verifies that the archive, checksum, release tag, and package
+manifest agree before running either executable.
 
 TailBox then listens only on Windows loopback:
 
@@ -109,6 +114,15 @@ the same signed/checksummed GitHub release without compiling locally.
 
 See [architecture](docs/architecture.md), [security](docs/security.md),
 [live test history](docs/live-test.md), and [roadmap](docs/roadmap.md).
+
+## Release quality
+
+Pull requests build and test both the Rust supervisor and Go engine on
+GitHub-hosted Windows, run Rustfmt, Clippy, gofmt, go vet, and
+PSScriptAnalyzer, then generate and inspect the complete release archive. Each
+PR must increase the Cargo SemVer version and add one matching
+`changelog/<version>.md`. Workflow dependencies are pinned to immutable commit
+SHAs and monitored by Dependabot.
 
 ## License
 

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
+    [ValidatePattern("^\d+\.\d+\.\d+$")]
     [string]$Version,
     [string]$TailBox,
     [string]$Engine,
@@ -46,17 +47,22 @@ Copy-Item -LiteralPath $tailscaleLicense `
     -Destination (Join-Path $packagePath "LICENSE-Tailscale-BSD-3-Clause.txt")
 
 @{
-    version = $Version
-    architecture = "windows-x64"
-    backend = "tsnet"
+    version          = $Version
+    architecture     = "windows-x64"
+    backend          = "tsnet"
     tailscaleVersion = "v1.98.9"
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $packagePath "manifest.json")
 
 if (Test-Path -LiteralPath $archivePath) {
     Remove-Item -LiteralPath $archivePath -Force
 }
+if (Test-Path -LiteralPath $checksumPath) {
+    Remove-Item -LiteralPath $checksumPath -Force
+}
 Compress-Archive -Path (Join-Path $packagePath "*") -DestinationPath $archivePath
 $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 Set-Content -LiteralPath $checksumPath -Value "$hash  tailbox-windows-x64.zip"
 
 Get-Item -LiteralPath $archivePath, $checksumPath
+
+

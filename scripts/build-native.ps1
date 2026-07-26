@@ -40,7 +40,7 @@ try {
     }
     if ($RustTarget) {
         Copy-Item -LiteralPath `
-            (Join-Path $repositoryRoot "target\$RustTarget\release\tailbox.exe") `
+        (Join-Path $repositoryRoot "target\$RustTarget\release\tailbox.exe") `
             -Destination (Join-Path $releaseDirectory "tailbox.exe")
     }
 }
@@ -49,5 +49,7 @@ finally {
 }
 
 Get-Item `
-    (Join-Path $releaseDirectory "tailbox.exe"), `
-    (Join-Path $releaseDirectory "tailbox-engine.exe")
+(Join-Path $releaseDirectory "tailbox.exe"), `
+(Join-Path $releaseDirectory "tailbox-engine.exe")
+
+
