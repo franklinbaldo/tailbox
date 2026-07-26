@@ -47,7 +47,7 @@ jobs:
             '${{ github.ref_name }}'.TrimStart('v')
           }
           $manifest = Get-Content -LiteralPath Cargo.toml -Raw
-          if ($manifest -notmatch "(?m)^version = `"$([regex]::Escape($version))`"$") {
+          if ($manifest -notmatch "(?m)^version = `"$([regex]::Escape($version))`"\r?$") {
             throw "Release version $version does not match Cargo.toml."
           }
           "prerelease=$($version -eq '0.1.0')" >> $env:GITHUB_OUTPUT

@@ -34,7 +34,7 @@ jobs:
           $manifest = Get-Content -LiteralPath Cargo.toml -Raw
           $headMatch = [regex]::Match(
               $manifest,
-              '(?m)^version = "(?<version>\d+\.\d+\.\d+)"$'
+              '(?m)^version = "(?<version>\d+\.\d+\.\d+)"\r?$'
           )
           if (-not $headMatch.Success) {
               throw "Cargo.toml does not contain a SemVer package version."
@@ -45,7 +45,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
               $baseMatch = [regex]::Match(
                   ($baseManifest -join "`n"),
-                  '(?m)^version = "(?<version>\d+\.\d+\.\d+)"$'
+                  '(?m)^version = "(?<version>\d+\.\d+\.\d+)"\r?$'
               )
               if (-not $baseMatch.Success) {
                   throw "The base Cargo.toml has no SemVer package version."
@@ -96,6 +96,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $unformatted = @(gofmt -l .)
           if ($unformatted.Count -ne 0) {
+              gofmt -d .
               throw "gofmt required for: $($unformatted -join ', ')."
           }
           go vet ./...
@@ -131,7 +132,7 @@ jobs:
           $manifest = Get-Content -LiteralPath Cargo.toml -Raw
           $match = [regex]::Match(
               $manifest,
-              '(?m)^version = "(?<version>\d+\.\d+\.\d+)"$'
+              '(?m)^version = "(?<version>\d+\.\d+\.\d+)"\r?$'
           )
           if (-not $match.Success) {
               throw "Cargo.toml does not contain a SemVer package version."
