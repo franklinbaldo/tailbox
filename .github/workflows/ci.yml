@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   version:
-    name: Version bump and changelog
+    name: Version and changelog consistency
     if: github.event_name == 'pull_request'
     runs-on: windows-latest
     steps:
@@ -57,8 +57,8 @@ jobs:
               $baseVersion = [version]"0.0.0"
           }
 
-          if ($headVersion -le $baseVersion) {
-              throw "Version must increase: base=$baseVersion head=$headVersion."
+          if ($headVersion -lt $baseVersion) {
+              throw "Version cannot decrease: base=$baseVersion head=$headVersion."
           }
 
           $added = @(
@@ -66,10 +66,15 @@ jobs:
                   "origin/$env:BASE...HEAD" -- "changelog/*.md"
           )
           $expected = "changelog/$headVersion.md"
-          if ($added.Count -ne 1 -or $added[0] -ne $expected) {
-              throw "Each PR must add exactly $expected; found: $($added -join ', ')."
+          if ($headVersion -gt $baseVersion) {
+              if ($added.Count -ne 1 -or $added[0] -ne $expected) {
+                  throw "A version bump must add exactly $expected; found: $($added -join ', ')."
+              }
           }
-          Write-Host "Version gate passed: $baseVersion -> $headVersion."
+          elseif ($added.Count -ne 0) {
+              throw "A changelog entry requires a Cargo version bump."
+          }
+          Write-Host "Version/changelog gate passed: $baseVersion -> $headVersion."
 
   windows:
     name: Windows build, quality, and package

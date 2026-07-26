@@ -120,9 +120,9 @@ See [architecture](docs/architecture.md), [security](docs/security.md),
 Pull requests build and test both the Rust supervisor and Go engine on
 GitHub-hosted Windows, run Rustfmt, Clippy, gofmt, go vet, and
 PSScriptAnalyzer, then generate and inspect the complete release archive. Each
-PR must increase the Cargo SemVer version and add one matching
-`changelog/<version>.md`. Workflow dependencies are pinned to immutable commit
-SHAs and monitored by Dependabot.
+Cargo SemVer bumps must add one matching `changelog/<version>.md`; CI-only and
+documentation changes do not require artificial releases. Workflow
+dependencies are pinned to immutable commit SHAs and monitored by Dependabot.
 
 ## License
 
