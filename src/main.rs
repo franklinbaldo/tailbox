@@ -1,6 +1,19 @@
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Child, Command, ExitCode, ExitStatus};
+
+#[cfg(windows)]
+use std::mem::{size_of, zeroed};
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+#[cfg(windows)]
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+    SetInformationJobObject,
+};
 
 fn engine_path() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("TAILBOX_ENGINE") {
@@ -31,6 +44,71 @@ OPTIONS:
     -h, --help           Print help
     -V, --version        Print version"
     );
+}
+
+#[cfg(windows)]
+struct EngineJob(HANDLE);
+
+#[cfg(windows)]
+impl EngineJob {
+    fn assign(child: &Child) -> Result<Self, String> {
+        // SAFETY: All handles and structures are initialized according to the
+        // Windows Job Objects API, and ownership of the job handle stays here.
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job.is_null() {
+                return Err(format!(
+                    "cannot create engine job: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+
+            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &limits as *const _ as *const _,
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            ) == 0
+            {
+                let error = std::io::Error::last_os_error();
+                CloseHandle(job);
+                return Err(format!("cannot configure engine job: {error}"));
+            }
+
+            if AssignProcessToJobObject(job, child.as_raw_handle() as HANDLE) == 0 {
+                let error = std::io::Error::last_os_error();
+                CloseHandle(job);
+                return Err(format!("cannot supervise native engine: {error}"));
+            }
+            Ok(Self(job))
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for EngineJob {
+    fn drop(&mut self) {
+        // SAFETY: EngineJob exclusively owns this valid job handle.
+        unsafe {
+            CloseHandle(self.0);
+        }
+    }
+}
+
+fn run_engine(engine: &Path, arguments: &[String]) -> Result<ExitStatus, String> {
+    let mut child = Command::new(engine)
+        .args(arguments)
+        .spawn()
+        .map_err(|error| format!("failed to start native engine: {error}"))?;
+
+    #[cfg(windows)]
+    let _job = EngineJob::assign(&child)?;
+
+    child
+        .wait()
+        .map_err(|error| format!("failed while waiting for native engine: {error}"))
 }
 
 fn main() -> ExitCode {
@@ -68,10 +146,10 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    match Command::new(engine).args(arguments).status() {
+    match run_engine(&engine, &arguments) {
         Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
-        Err(error) => {
-            eprintln!("tailbox: failed to start native engine: {error}");
+        Err(message) => {
+            eprintln!("tailbox: {message}");
             ExitCode::FAILURE
         }
     }

@@ -1,5 +1,39 @@
 # Live test record
 
+## Native tsnet backend — 2026-07-25
+
+The native Windows x64 build was started as an ordinary user with no service,
+driver, TUN adapter, or route change. The first run:
+
+1. created state under `%LOCALAPPDATA%\TailBox\state`;
+2. reached `NeedsLogin` and printed an interactive Tailscale authorization URL;
+3. completed tailnet authentication without Windows elevation;
+4. exposed SOCKS5 on `127.0.0.1:1055`;
+5. exposed HTTP/HTTPS CONNECT on `127.0.0.1:1056`;
+6. carried HTTPS requests through both proxy protocols.
+
+After both processes were stopped, the second run loaded the persisted state,
+reported `Running` without another login, reopened both proxies, and carried
+another HTTPS request.
+
+An initial supervisor build allowed the child engine to survive when the
+supervisor was forcibly terminated. The Rust CLI was corrected to assign the
+engine to a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+A repeat test forcibly terminated only the supervisor and verified that the
+engine exited and both loopback listeners closed.
+
+The authorization URL, user identity, node addresses, and observed public IP
+were intentionally not recorded.
+
+Still untested on the native backend:
+
+- a private tailnet HTTP endpoint;
+- Playwright MCP;
+- SSH;
+- a clean standard-user Windows installation.
+
+## LiteBox backend — 2026-07-25
+
 Date: 2026-07-25
 
 Platform: Windows x64, standard user process
