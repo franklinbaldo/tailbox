@@ -41,8 +41,9 @@ jobs:
           }
           $headVersion = [version]$headMatch.Groups["version"].Value
 
-          $baseManifest = git show "origin/$env:BASE`:Cargo.toml" 2>$null
-          if ($LASTEXITCODE -eq 0) {
+          $baseFiles = @(git ls-tree --name-only "origin/$env:BASE" -- Cargo.toml)
+          if ($baseFiles.Count -eq 1) {
+              $baseManifest = git show "origin/$env:BASE`:Cargo.toml"
               $baseMatch = [regex]::Match(
                   ($baseManifest -join "`n"),
                   '(?m)^version = "(?<version>\d+\.\d+\.\d+)"\r?$'

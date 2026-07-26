@@ -49,10 +49,15 @@ try {
     )
     $actualFiles = @(
         Get-ChildItem -LiteralPath $temporaryRoot -File |
-            Sort-Object -Property Name |
             Select-Object -ExpandProperty Name
     )
-    if (($actualFiles -join "`n") -cne ($expectedFiles -join "`n")) {
+    $missingFiles = @($expectedFiles | Where-Object { $_ -cnotin $actualFiles })
+    $unexpectedFiles = @($actualFiles | Where-Object { $_ -cnotin $expectedFiles })
+    if (
+        $actualFiles.Count -ne $expectedFiles.Count -or
+        $missingFiles.Count -ne 0 -or
+        $unexpectedFiles.Count -ne 0
+    ) {
         throw "Unexpected package contents: $($actualFiles -join ', ')."
     }
 
