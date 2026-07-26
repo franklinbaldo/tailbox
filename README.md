@@ -10,9 +10,9 @@ use the tailnet.
 
 > [!WARNING]
 > TailBox is an early experiment. The native backend has completed interactive
-> login, proxy traffic, persistence, and lifecycle tests on Windows x64, but it
-> has not yet completed a clean-machine acceptance test or independent security
-> review.
+> login, public proxy traffic, private Tailscale SSH transport, persistence,
+> and lifecycle tests on Windows x64, but it has not yet completed a
+> clean-machine acceptance test or independent security review.
 
 ## Install and run
 

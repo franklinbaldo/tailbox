@@ -12,6 +12,11 @@ driver, TUN adapter, or route change. The first run:
 5. exposed HTTP/HTTPS CONNECT on `127.0.0.1:1056`;
 6. carried HTTPS requests through both proxy protocols.
 
+The persisted native identity reported 19 tailnet peers, with one peer online
+during the test. A SOCKS5 connection to that peer's TCP port 22 returned the
+`SSH-2.0-Tailscale` protocol banner. The test did not authenticate to SSH or
+execute a remote command. Peer names and addresses were not recorded.
+
 After both processes were stopped, the second run loaded the persisted state,
 reported `Running` without another login, reopened both proxies, and carried
 another HTTPS request.
@@ -27,9 +32,9 @@ were intentionally not recorded.
 
 Still untested on the native backend:
 
-- a private tailnet HTTP endpoint;
 - Playwright MCP;
-- SSH;
+- authenticated SSH and command execution;
+- a private HTTP endpoint (none was online on the tested common ports);
 - a clean standard-user Windows installation.
 
 ## LiteBox backend — 2026-07-25

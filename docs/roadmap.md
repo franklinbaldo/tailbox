@@ -19,7 +19,8 @@
 - [x] Complete interactive native login and public proxy traffic tests.
 - [x] Restart without login and reuse persisted identity.
 - [x] Ensure the Windows Job Object closes the engine with its supervisor.
-- [ ] Reach a private tailnet service through the native proxies.
+- [x] Reach a private Tailscale SSH endpoint through SOCKS5.
+- [ ] Reach a private tailnet HTTP endpoint through the native proxies.
 - [ ] Test on clean Windows 10/11 x64 standard-user accounts.
 
 ## Phase 2: release
