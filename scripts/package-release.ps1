@@ -38,10 +38,28 @@ New-Item -ItemType Directory -Path $OutputDirectory, $packagePath -Force | Out-N
 Copy-Item -LiteralPath $TailBox -Destination (Join-Path $packagePath "tailbox.exe")
 Copy-Item -LiteralPath $Engine -Destination (Join-Path $packagePath "tailbox-engine.exe")
 Copy-Item -LiteralPath (Join-Path $repositoryRoot "LICENSE") -Destination (Join-Path $packagePath "LICENSE.txt")
-$goModuleCache = (& go env GOMODCACHE).Trim()
-$tailscaleLicense = Join-Path $goModuleCache "tailscale.com@v1.98.9\LICENSE"
+$engineDirectory = Join-Path $repositoryRoot "engine"
+Push-Location $engineDirectory
+try {
+    $tailscaleModule = (& go list -m -f "{{.Version}}|{{.Dir}}" tailscale.com).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to resolve the Tailscale Go module."
+    }
+}
+finally {
+    Pop-Location
+}
+$tailscaleModuleParts = $tailscaleModule.Split("|", 2)
+if (
+    $tailscaleModuleParts.Count -ne 2 -or
+    $tailscaleModuleParts[0] -notmatch "^v\d+\.\d+\.\d+$"
+) {
+    throw "The resolved Tailscale Go module metadata is invalid."
+}
+$tailscaleVersion = $tailscaleModuleParts[0]
+$tailscaleLicense = Join-Path $tailscaleModuleParts[1] "LICENSE"
 if (-not (Test-Path -LiteralPath $tailscaleLicense -PathType Leaf)) {
-    throw "Tailscale license not found in the Go module cache: $tailscaleLicense"
+    throw "Tailscale license not found in the resolved module: $tailscaleLicense"
 }
 Copy-Item -LiteralPath $tailscaleLicense `
     -Destination (Join-Path $packagePath "LICENSE-Tailscale-BSD-3-Clause.txt")
@@ -50,7 +68,7 @@ Copy-Item -LiteralPath $tailscaleLicense `
     version          = $Version
     architecture     = "windows-x64"
     backend          = "tsnet"
-    tailscaleVersion = "v1.98.9"
+    tailscaleVersion = $tailscaleVersion
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $packagePath "manifest.json")
 
 if (Test-Path -LiteralPath $archivePath) {

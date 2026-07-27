@@ -9,6 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$engineDirectory = Join-Path $repositoryRoot "engine"
 if (-not $Archive) {
     $Archive = Join-Path $repositoryRoot "dist\tailbox-windows-x64.zip"
 }
@@ -20,6 +21,18 @@ foreach ($path in @($Archive, $Checksum)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Release output is missing: $path"
     }
+}
+
+$tailscaleVersion = $null
+Push-Location $engineDirectory
+try {
+    $tailscaleVersion = (& go list -m -f "{{.Version}}" tailscale.com).Trim()
+    if ($LASTEXITCODE -ne 0 -or $tailscaleVersion -notmatch "^v\d+\.\d+\.\d+$") {
+        throw "Unable to resolve the expected Tailscale Go module version."
+    }
+}
+finally {
+    Pop-Location
 }
 
 $checksumText = (Get-Content -LiteralPath $Checksum -Raw).Trim()
@@ -68,7 +81,7 @@ try {
         $manifest.version -cne $Version -or
         $manifest.architecture -cne "windows-x64" -or
         $manifest.backend -cne "tsnet" -or
-        $manifest.tailscaleVersion -cne "v1.98.9"
+        $manifest.tailscaleVersion -cne $tailscaleVersion
     ) {
         throw "Release manifest metadata is incorrect."
     }
