@@ -50,7 +50,7 @@ jobs:
           if ($manifest -notmatch "(?m)^version = `"$([regex]::Escape($version))`"\r?$") {
             throw "Release version $version does not match Cargo.toml."
           }
-          $isPrerelease = ($version -eq "0.1.0").ToString().ToLowerInvariant()
+          $isPrerelease = $version.StartsWith("0.").ToString().ToLowerInvariant()
           "prerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
 
       - name: Build and test

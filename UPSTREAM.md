@@ -4,7 +4,7 @@ The native backend is currently developed against:
 
 | Component | Revision | License |
 | --- | --- | --- |
-| Tailscale | `v1.98.9` / `6c167d40fa37aeb51afa7ff336730670ea4762bf` | BSD-3-Clause |
+| Tailscale | `v1.102.0` / `35283c95445fb198af1ce708dac05714bdfaa037` | BSD-3-Clause |
 | Go | `1.26.5` | BSD-3-Clause |
 | Rust | stable, edition 2024 | MIT OR Apache-2.0 |
 
