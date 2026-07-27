@@ -1,6 +1,6 @@
 [package]
 name = "tailbox"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 description = "Application-scoped tailnet access for unprivileged Windows users and agents"

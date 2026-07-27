@@ -98,11 +98,11 @@ and the observed Go stack-unwinding failure.
 
 ## Build
 
-The build uses pinned Tailscale `v1.98.9`, Go 1.26, and stable Rust:
+The build uses pinned Tailscale `v1.102.0`, Go 1.26, and stable Rust:
 
 ```powershell
 .\scripts\build-native.ps1
-.\scripts\package-release.ps1 -Version 0.1.0
+.\scripts\package-release.ps1 -Version 0.1.1
 ```
 
 Generated executables and release archives are excluded from Git. Official
