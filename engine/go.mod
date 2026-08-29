@@ -1,8 +1,8 @@
 module github.com/franklinbaldo/tailbox/engine
 
-go 1.26.5
+go 1.26.6
 
-require tailscale.com v1.102.0
+require tailscale.com v1.102.3
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
